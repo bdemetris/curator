@@ -14,6 +14,8 @@ import (
 	"github.com/slack-go/slack/socketmode"
 )
 
+var deviceTypes = []string{"android", "ios", "macos", "windows"}
+
 // App is the main structure holding all clients.
 type App struct {
 	API    *slack.Client
@@ -82,7 +84,7 @@ func (a *App) handleAppMentionCommand(ctx context.Context, channelID, userID, co
 	case "get":
 		a.handleGetDevice(ctx, channelID, args)
 	case "list":
-		a.handleListDevices(ctx, channelID)
+		a.handleListDevices(ctx, channelID, args)
 	default:
 		a.sendBlocks(channelID, createUnknownCommandMessage(userID))
 	}
@@ -93,12 +95,10 @@ func (a *App) handleAppMentionCommand(ctx context.Context, channelID, userID, co
 // ------------------------------------------
 
 func (a *App) handleAddDevice(ctx context.Context, channelID string, args []string) {
-	if len(args) != 2 {
-		a.sendText(channelID, "Usage: `@bot add <SerialNumber> <AssetTag>` (AssetTag must be a number)")
+	if len(args) != 3 {
+		a.sendText(channelID, "Usage: `@bot add <SerialNumber> <AssetTag> <DeviceType>` (AssetTag must be a number)")
 		return
 	}
-
-	log.Println(args)
 
 	serial := args[0]
 	assetTag, err := strconv.Atoi(args[1])
@@ -106,8 +106,13 @@ func (a *App) handleAddDevice(ctx context.Context, channelID string, args []stri
 		a.sendText(channelID, "Error: Asset Tag must be a valid integer.")
 		return
 	}
+	deviceType := args[2]
+	if !IsArgumentAccepted(deviceTypes, deviceType) {
+		a.sendText(channelID, "Usage: `@bot add <SerialNumber> <AssetTag> <DeviceType>` (Device Type must be one of android, ios, macos, windows)")
+		return
+	}
 
-	device := database.Device{SerialNumber: serial, AssetTag: assetTag}
+	device := database.Device{SerialNumber: serial, AssetTag: assetTag, DeviceType: deviceType}
 	if err := a.DB.PutDevice(ctx, device); err != nil {
 		log.Printf("DynamoDB Put Error: %v", err)
 		a.sendText(channelID, fmt.Sprintf("Error saving device to DynamoDB: %v", err))
@@ -148,50 +153,46 @@ func (a *App) handleGetDevice(ctx context.Context, channelID string, args []stri
 }
 
 // @bot list
-func (a *App) handleListDevices(ctx context.Context, channelID string) {
-	// 1. Call the DynamoDB helper to get all devices
-	devices, err := a.DB.ListDevices(ctx)
+func (a *App) handleListDevices(ctx context.Context, channelID string, args []string) {
+	if len(args) != 1 {
+		a.sendText(channelID, "Usage: `@bot list <DeviceType>` (DeviceType is one of all, android, ios, macos, windows)")
+		return
+	}
+	query := args[0]
+
+	devices, err := a.DB.ListDevices(ctx, query)
 	if err != nil {
 		log.Printf("DynamoDB List Error: %v", err)
 		a.sendText(channelID, fmt.Sprintf("Error listing devices: %v", err))
 		return
 	}
 
-	// 2. Handle the case where the table is empty
 	if len(devices) == 0 {
 		a.sendText(channelID, "The database is currently empty. Try `@bot add D001 Laptop 1500`!")
 		return
 	}
 
-	// 3. Construct the Slack message using Block Kit
-
-	// Header Block
 	headerBlock := slack.NewHeaderBlock(slack.NewTextBlockObject("plain_text",
 		fmt.Sprintf("📋 Found %d Device(s) in Local DynamoDB", len(devices)), false, false))
 
-	// List of Section Blocks (one for each device)
 	var listBlocks []slack.Block
 	listBlocks = append(listBlocks, headerBlock, slack.NewDividerBlock())
 
-	// Loop through devices (limit display for concise message)
 	count := 0
 	const maxDisplay = 10
 
 	for _, dev := range devices {
 		if count >= maxDisplay {
-			// Add a context block if we have more results than we display
 			listBlocks = append(listBlocks, slack.NewContextBlock("",
 				slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("... and %d more. Use `@bot get ID` for details.", len(devices)-count), false, false)))
 			break
 		}
 
-		// Create a Section Block for the device details
 		text := fmt.Sprintf("*<%s>* - (`$%d`)", dev.SerialNumber, dev.AssetTag)
 		listBlocks = append(listBlocks, slack.NewSectionBlock(slack.NewTextBlockObject("mrkdwn", text, false, false), nil, nil))
 		count++
 	}
 
-	// 4. Send the blocks using the Slack helper
 	a.sendBlocks(channelID, listBlocks)
 }
 
@@ -264,4 +265,18 @@ func createUnknownCommandMessage(userID string) []slack.Block {
 	return []slack.Block{
 		slack.NewSectionBlock(slack.NewTextBlockObject("mrkdwn", text, false, false), nil, nil),
 	}
+}
+
+// -----------------------------
+// OTHER HELPERS
+// -----------------------------
+
+func IsArgumentAccepted(accepted []string, arg string) bool {
+	lowerArg := strings.ToLower(arg)
+	for _, acceptedArg := range accepted {
+		if lowerArg == acceptedArg {
+			return true
+		}
+	}
+	return false
 }

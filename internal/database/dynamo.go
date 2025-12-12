@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -56,7 +57,6 @@ func NewDynamoClient(ctx context.Context) (*DynamoClient, error) {
 
 		func(o *dynamodb.Options) {
 			o.Region = "us-west-2"
-			o.ClientLogMode = aws.LogSigning
 		},
 	)
 
@@ -141,11 +141,32 @@ func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (Device, 
 	return device, nil
 }
 
-func (c *DynamoClient) ListDevices(ctx context.Context) ([]Device, error) {
-	result, err := c.svc.Scan(ctx, &dynamodb.ScanInput{
+// ListDevices retrieves items, optionally filtering by text query and device type.
+func (c *DynamoClient) ListDevices(ctx context.Context, deviceType string) ([]Device, error) {
+
+	scanInput := &dynamodb.ScanInput{
 		TableName: aws.String(tableName),
 		Select:    types.SelectAllAttributes,
-	})
+	}
+
+	filterExpressions := []string{}
+	attributeNames := map[string]string{}
+	attributeValues := map[string]types.AttributeValue{}
+
+	// use type if the request isn't for all devices
+	if deviceType != "all" {
+		filterExpressions = append(filterExpressions, "#DeviceType = :typeQueryValue")
+		attributeNames["#DeviceType"] = "DeviceType"
+		attributeValues[":typeQueryValue"] = &types.AttributeValueMemberS{Value: deviceType}
+	}
+
+	if len(filterExpressions) > 0 {
+		scanInput.FilterExpression = aws.String(strings.Join(filterExpressions, " AND "))
+		scanInput.ExpressionAttributeNames = attributeNames
+		scanInput.ExpressionAttributeValues = attributeValues
+	}
+
+	result, err := c.svc.Scan(ctx, scanInput)
 	if err != nil {
 		return nil, fmt.Errorf("dynamodb scan failed: %w", err)
 	}
