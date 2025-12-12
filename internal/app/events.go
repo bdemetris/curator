@@ -78,9 +78,11 @@ func (a *App) handleAppMentionCommand(ctx context.Context, channelID, userID, co
 	case "hello", "hi":
 		a.sendBlocks(channelID, createSimpleGreeting(userID))
 	case "add":
-		a.handleAddDevice(ctx, channelID, userID, args)
+		a.handleAddDevice(ctx, channelID, args)
 	case "get":
-		a.handleGetDevice(ctx, channelID, userID, args)
+		a.handleGetDevice(ctx, channelID, args)
+	case "list":
+		a.handleListDevices(ctx, channelID)
 	default:
 		a.sendBlocks(channelID, createUnknownCommandMessage(userID))
 	}
@@ -90,7 +92,7 @@ func (a *App) handleAppMentionCommand(ctx context.Context, channelID, userID, co
 // DynamoDB Command Handlers
 // ------------------------------------------
 
-func (a *App) handleAddDevice(ctx context.Context, channelID, userID string, args []string) {
+func (a *App) handleAddDevice(ctx context.Context, channelID string, args []string) {
 	if len(args) != 2 {
 		a.sendText(channelID, "Usage: `@bot add <SerialNumber> <AssetTag>` (AssetTag must be a number)")
 		return
@@ -115,7 +117,7 @@ func (a *App) handleAddDevice(ctx context.Context, channelID, userID string, arg
 	a.sendText(channelID, fmt.Sprintf("✅ Device `%s` saved to local DynamoDB!", serial))
 }
 
-func (a *App) handleGetDevice(ctx context.Context, channelID, userID string, args []string) {
+func (a *App) handleGetDevice(ctx context.Context, channelID string, args []string) {
 	if len(args) != 1 {
 		a.sendText(channelID, "Usage: `@bot get <SerialNumber>`")
 		return
@@ -134,7 +136,7 @@ func (a *App) handleGetDevice(ctx context.Context, channelID, userID string, arg
 	}
 
 	resultBlock := slack.NewSectionBlock(
-		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Product Found:* `%s`", device.ID), false, false),
+		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Device Found:* `%s`", device.ID), false, false),
 		[]*slack.TextBlockObject{
 			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*SerialNumber:*\n%s", device.SerialNumber), false, false),
 			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*AssetTag:*\n%d", device.AssetTag), false, false),
@@ -143,6 +145,54 @@ func (a *App) handleGetDevice(ctx context.Context, channelID, userID string, arg
 	)
 
 	a.sendBlocks(channelID, []slack.Block{resultBlock})
+}
+
+// @bot list
+func (a *App) handleListDevices(ctx context.Context, channelID string) {
+	// 1. Call the DynamoDB helper to get all devices
+	devices, err := a.DB.ListDevices(ctx)
+	if err != nil {
+		log.Printf("DynamoDB List Error: %v", err)
+		a.sendText(channelID, fmt.Sprintf("Error listing devices: %v", err))
+		return
+	}
+
+	// 2. Handle the case where the table is empty
+	if len(devices) == 0 {
+		a.sendText(channelID, "The database is currently empty. Try `@bot add D001 Laptop 1500`!")
+		return
+	}
+
+	// 3. Construct the Slack message using Block Kit
+
+	// Header Block
+	headerBlock := slack.NewHeaderBlock(slack.NewTextBlockObject("plain_text",
+		fmt.Sprintf("📋 Found %d Device(s) in Local DynamoDB", len(devices)), false, false))
+
+	// List of Section Blocks (one for each device)
+	var listBlocks []slack.Block
+	listBlocks = append(listBlocks, headerBlock, slack.NewDividerBlock())
+
+	// Loop through devices (limit display for concise message)
+	count := 0
+	const maxDisplay = 10
+
+	for _, dev := range devices {
+		if count >= maxDisplay {
+			// Add a context block if we have more results than we display
+			listBlocks = append(listBlocks, slack.NewContextBlock("",
+				slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("... and %d more. Use `@bot get ID` for details.", len(devices)-count), false, false)))
+			break
+		}
+
+		// Create a Section Block for the device details
+		text := fmt.Sprintf("*<%s>* - (`$%d`)", dev.SerialNumber, dev.AssetTag)
+		listBlocks = append(listBlocks, slack.NewSectionBlock(slack.NewTextBlockObject("mrkdwn", text, false, false), nil, nil))
+		count++
+	}
+
+	// 4. Send the blocks using the Slack helper
+	a.sendBlocks(channelID, listBlocks)
 }
 
 // ------------------------------------------

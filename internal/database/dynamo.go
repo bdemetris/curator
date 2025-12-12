@@ -140,3 +140,21 @@ func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (Device, 
 
 	return device, nil
 }
+
+func (c *DynamoClient) ListDevices(ctx context.Context) ([]Device, error) {
+	result, err := c.svc.Scan(ctx, &dynamodb.ScanInput{
+		TableName: aws.String(tableName),
+		Select:    types.SelectAllAttributes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("dynamodb scan failed: %w", err)
+	}
+
+	var devices []Device
+	err = attributevalue.UnmarshalListOfMaps(result.Items, &devices)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal devices: %w", err)
+	}
+
+	return devices, nil
+}
