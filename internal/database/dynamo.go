@@ -13,6 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
+const tableName = "LocalProducts"
+const localEndpoint = "http://localhost:8000"
+
 // DynamoClient holds the DynamoDB service client.
 type DynamoClient struct {
 	svc *dynamodb.Client
@@ -25,30 +28,10 @@ type Product struct {
 	Price int    `dynamodbav:"Price"`
 }
 
-const tableName = "LocalProducts"
-const localEndpoint = "http://localhost:8000"
-
 // NewDynamoClient configures and returns a client connected to DynamoDB Local.
 func NewDynamoClient(ctx context.Context) (*DynamoClient, error) {
-
 	cfg, err := config.LoadDefaultConfig(ctx,
-		// CRITICAL FIX 1: Set a Region
-		config.WithRegion("us-west-2"), // <<< ADD THIS LINE
-
-		// ... (existing EndpointResolverOptions code remains) ...
-		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
-			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-				if service == dynamodb.ServiceID {
-					return aws.Endpoint{
-						URL:           localEndpoint,
-						SigningName:   "dynamodb",
-						SigningRegion: "us-west-2",
-					}, nil
-				}
-				return aws.Endpoint{}, &aws.EndpointNotFoundError{}
-			},
-		)),
-		// CRITICAL FIX 2: Use static dummy credentials for signing
+		config.WithRegion("us-west-2"),
 		config.WithCredentialsProvider(
 			aws.NewCredentialsCache(
 				credentials.NewStaticCredentialsProvider("dummy", "dummy", ""),
@@ -59,9 +42,17 @@ func NewDynamoClient(ctx context.Context) (*DynamoClient, error) {
 		return nil, fmt.Errorf("failed to load SDK configuration: %w", err)
 	}
 
-	svc := dynamodb.NewFromConfig(cfg)
+	svc := dynamodb.NewFromConfig(cfg,
+		dynamodb.WithEndpointResolver(
+			dynamodb.EndpointResolverFromURL(localEndpoint),
+		),
 
-	// Ensure table exists on startup (idempotent)
+		func(o *dynamodb.Options) {
+			o.Region = "us-west-2"
+			o.ClientLogMode = aws.LogSigning
+		},
+	)
+
 	if err := ensureTableExists(ctx, svc); err != nil {
 		return nil, fmt.Errorf("failed to ensure table exists: %w", err)
 	}

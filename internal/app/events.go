@@ -18,37 +18,29 @@ import (
 type App struct {
 	API    *slack.Client
 	Client *socketmode.Client
-	DB     *database.DynamoClient // Our new database client
+	DB     *database.DynamoClient
 }
 
 // HandleEvents listens for and processes incoming Slack events.
-func (a *App) HandleEvents(ctx context.Context) { // <-- ctx is available here
+func (a *App) HandleEvents(ctx context.Context) {
 	for evt := range a.Client.Events {
 		switch evt.Type {
-		// ... (other cases) ...
 		case socketmode.EventTypeEventsAPI:
 			eventsAPIEvent, ok := evt.Data.(slackevents.EventsAPIEvent)
 			if !ok {
 				a.Client.Debugf("Ignored %+v\n", evt)
 				continue
 			}
-
 			a.Client.Ack(*evt.Request)
-
 			if eventsAPIEvent.Type == slackevents.CallbackEvent {
-				// CORRECTED: Pass ctx as the first argument
 				a.handleCallbackEvent(ctx, eventsAPIEvent)
 			}
 		}
 	}
 }
 
-// internal/app/events.go
-
 // handleCallbackEvent processes the inner event from a generic EventsAPI payload.
-// It now takes the full EventsAPIEvent structure.
 func (a *App) handleCallbackEvent(ctx context.Context, eventsAPIEvent slackevents.EventsAPIEvent) {
-	// Access the InnerEvent field from the passed structure
 	innerEvent := eventsAPIEvent.InnerEvent
 
 	switch ev := innerEvent.Data.(type) {
@@ -56,7 +48,6 @@ func (a *App) handleCallbackEvent(ctx context.Context, eventsAPIEvent slackevent
 		log.Printf("Received app_mention: %s", ev.Text)
 
 		authTestResponse, err := a.API.AuthTest()
-		// ... (rest of AppMention handling code is the same)
 		if err != nil {
 			log.Printf("ERROR: Failed to get bot identity: %v", err)
 			return
@@ -99,7 +90,6 @@ func (a *App) handleAppMentionCommand(ctx context.Context, channelID, userID, co
 // DynamoDB Command Handlers
 // ------------------------------------------
 
-// @bot add P1002 Monitor 250
 func (a *App) handleAddProduct(ctx context.Context, channelID, userID string, args []string) {
 	if len(args) != 3 {
 		a.sendText(channelID, "Usage: `@bot add <ID> <Name> <Price>` (Price must be a number)")
@@ -124,7 +114,6 @@ func (a *App) handleAddProduct(ctx context.Context, channelID, userID string, ar
 	a.sendText(channelID, fmt.Sprintf("✅ Product `%s` saved to local DynamoDB!", id))
 }
 
-// @bot get P1002
 func (a *App) handleGetProduct(ctx context.Context, channelID, userID string, args []string) {
 	if len(args) != 1 {
 		a.sendText(channelID, "Usage: `@bot get <ID>`")
@@ -143,7 +132,6 @@ func (a *App) handleGetProduct(ctx context.Context, channelID, userID string, ar
 		return
 	}
 
-	// Use Block Kit for a nice result display
 	resultBlock := slack.NewSectionBlock(
 		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Product Found:* `%s`", product.ID), false, false),
 		[]*slack.TextBlockObject{
@@ -182,9 +170,9 @@ func (a *App) sendBlocks(channelID string, blocks []slack.Block) {
 	}
 }
 
-// ------------------------------------------
-// BLOCK KIT MESSAGE GENERATORS (Unchanged)
-// ------------------------------------------
+// -----------------------------
+// BLOCK KIT MESSAGE GENERATORS
+// -----------------------------
 
 func createHelpMessage(userID string) []slack.Block {
 	headerText := fmt.Sprintf("👋 Hello <@%s>! I'm your DynamoDB Bot. Try me!", userID)
