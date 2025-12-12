@@ -78,9 +78,9 @@ func (a *App) handleAppMentionCommand(ctx context.Context, channelID, userID, co
 	case "hello", "hi":
 		a.sendBlocks(channelID, createSimpleGreeting(userID))
 	case "add":
-		a.handleAddProduct(ctx, channelID, userID, args)
+		a.handleAddDevice(ctx, channelID, userID, args)
 	case "get":
-		a.handleGetProduct(ctx, channelID, userID, args)
+		a.handleGetDevice(ctx, channelID, userID, args)
 	default:
 		a.sendBlocks(channelID, createUnknownCommandMessage(userID))
 	}
@@ -90,53 +90,54 @@ func (a *App) handleAppMentionCommand(ctx context.Context, channelID, userID, co
 // DynamoDB Command Handlers
 // ------------------------------------------
 
-func (a *App) handleAddProduct(ctx context.Context, channelID, userID string, args []string) {
-	if len(args) != 3 {
-		a.sendText(channelID, "Usage: `@bot add <ID> <Name> <Price>` (Price must be a number)")
+func (a *App) handleAddDevice(ctx context.Context, channelID, userID string, args []string) {
+	if len(args) != 2 {
+		a.sendText(channelID, "Usage: `@bot add <SerialNumber> <AssetTag>` (AssetTag must be a number)")
 		return
 	}
 
-	id := args[0]
-	name := args[1]
-	price, err := strconv.Atoi(args[2])
+	log.Println(args)
+
+	serial := args[0]
+	assetTag, err := strconv.Atoi(args[1])
 	if err != nil {
-		a.sendText(channelID, "Error: Price must be a valid integer.")
+		a.sendText(channelID, "Error: Asset Tag must be a valid integer.")
 		return
 	}
 
-	product := database.Product{ID: id, Name: name, Price: price}
-	if err := a.DB.PutProduct(ctx, product); err != nil {
+	device := database.Device{SerialNumber: serial, AssetTag: assetTag}
+	if err := a.DB.PutDevice(ctx, device); err != nil {
 		log.Printf("DynamoDB Put Error: %v", err)
-		a.sendText(channelID, fmt.Sprintf("Error saving product to DynamoDB: %v", err))
+		a.sendText(channelID, fmt.Sprintf("Error saving device to DynamoDB: %v", err))
 		return
 	}
 
-	a.sendText(channelID, fmt.Sprintf("✅ Product `%s` saved to local DynamoDB!", id))
+	a.sendText(channelID, fmt.Sprintf("✅ Device `%s` saved to local DynamoDB!", serial))
 }
 
-func (a *App) handleGetProduct(ctx context.Context, channelID, userID string, args []string) {
+func (a *App) handleGetDevice(ctx context.Context, channelID, userID string, args []string) {
 	if len(args) != 1 {
-		a.sendText(channelID, "Usage: `@bot get <ID>`")
+		a.sendText(channelID, "Usage: `@bot get <SerialNumber>`")
 		return
 	}
 
-	id := args[0]
-	product, err := a.DB.GetProduct(ctx, id)
+	serial := args[0]
+	device, err := a.DB.GetDevice(ctx, serial)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			a.sendText(channelID, fmt.Sprintf("Product ID `%s` was not found in the database.", id))
+			a.sendText(channelID, fmt.Sprintf("Device SerialNumber `%s` was not found in the database.", serial))
 			return
 		}
 		log.Printf("DynamoDB Get Error: %v", err)
-		a.sendText(channelID, fmt.Sprintf("Error retrieving product: %v", err))
+		a.sendText(channelID, fmt.Sprintf("Error retrieving device: %v", err))
 		return
 	}
 
 	resultBlock := slack.NewSectionBlock(
-		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Product Found:* `%s`", product.ID), false, false),
+		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Product Found:* `%s`", device.ID), false, false),
 		[]*slack.TextBlockObject{
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Name:*\n%s", product.Name), false, false),
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Price:*\n$%d", product.Price), false, false),
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*SerialNumber:*\n%s", device.SerialNumber), false, false),
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*AssetTag:*\n%d", device.AssetTag), false, false),
 		},
 		nil,
 	)
@@ -182,8 +183,8 @@ func createHelpMessage(userID string) []slack.Block {
 
 	sectionText := "*Here are the commands I support:*\n\n" +
 		"• `@botName help` - Displays this message.\n" +
-		"• `@botName add <ID> <Name> <Price>` - Saves a product to local DynamoDB.\n" +
-		"• `@botName get <ID>` - Retrieves a product from local DynamoDB."
+		"• `@botName add <SerialNumber> <AssetTag>` - Saves a device to local DynamoDB.\n" +
+		"• `@botName get <SerialNumber>` - Retrieves a device from local DynamoDB."
 
 	sectionBlock := slack.NewSectionBlock(
 		slack.NewTextBlockObject("mrkdwn", sectionText, false, false),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -13,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-const tableName = "LocalProducts"
+const tableName = "LocalDevices"
 const localEndpoint = "http://localhost:8000"
 
 // DynamoClient holds the DynamoDB service client.
@@ -21,11 +22,17 @@ type DynamoClient struct {
 	svc *dynamodb.Client
 }
 
-// Product struct maps the Go structure to the DynamoDB item structure.
-type Product struct {
-	ID    string `dynamodbav:"ProductID"`
-	Name  string `dynamodbav:"ProductName"`
-	Price int    `dynamodbav:"Price"`
+// Device struct maps the Go structure to the DynamoDB item structure.
+type Device struct {
+	ID           string    `dynamodbav:"ObjectId"`
+	SerialNumber string    `dynamodbav:"SerialNumber"`
+	AssetTag     int       `dynamodbav:"AssetTag"`
+	AssignedTo   string    `dynamodbav:"AssignedTo"`
+	AssignedDate time.Time `dynamodbav:"AssignedDate"`
+	Manufacturer string    `dynamodbav:"Manufacturer"`
+	ModelName    string    `dynamodbav:"ModelName"`
+	DeviceType   string    `dynamodbav:"DeviceType"`
+	Location     string    `dynamodbav:"Location"`
 }
 
 // NewDynamoClient configures and returns a client connected to DynamoDB Local.
@@ -73,13 +80,13 @@ func ensureTableExists(ctx context.Context, svc *dynamodb.Client) error {
 		TableName: aws.String(tableName),
 		AttributeDefinitions: []types.AttributeDefinition{
 			{
-				AttributeName: aws.String("ProductID"),
+				AttributeName: aws.String("SerialNumber"),
 				AttributeType: types.ScalarAttributeTypeS,
 			},
 		},
 		KeySchema: []types.KeySchemaElement{
 			{
-				AttributeName: aws.String("ProductID"),
+				AttributeName: aws.String("SerialNumber"),
 				KeyType:       types.KeyTypeHash,
 			},
 		},
@@ -95,9 +102,9 @@ func ensureTableExists(ctx context.Context, svc *dynamodb.Client) error {
 	return nil
 }
 
-// PutProduct stores a product item in the table.
-func (c *DynamoClient) PutProduct(ctx context.Context, product Product) error {
-	item, err := attributevalue.MarshalMap(product)
+// PutDevice stores a Device item in the table.
+func (c *DynamoClient) PutDevice(ctx context.Context, device Device) error {
+	item, err := attributevalue.MarshalMap(device)
 	if err != nil {
 		return fmt.Errorf("failed to marshal item: %w", err)
 	}
@@ -109,27 +116,27 @@ func (c *DynamoClient) PutProduct(ctx context.Context, product Product) error {
 	return err
 }
 
-// GetProduct retrieves a product item by its ID.
-func (c *DynamoClient) GetProduct(ctx context.Context, productID string) (Product, error) {
+// GetDevice retrieves a Device item by its Serial Number.
+func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (Device, error) {
 	result, err := c.svc.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]types.AttributeValue{
-			"ProductID": &types.AttributeValueMemberS{Value: productID},
+			"SerialNumber": &types.AttributeValueMemberS{Value: deviceID},
 		},
 	})
 	if err != nil {
-		return Product{}, err
+		return Device{}, err
 	}
 
 	if result.Item == nil {
-		return Product{}, fmt.Errorf("product ID %s not found", productID)
+		return Device{}, fmt.Errorf("SerialNumber %s not found", deviceID)
 	}
 
-	var product Product
-	err = attributevalue.UnmarshalMap(result.Item, &product)
+	var device Device
+	err = attributevalue.UnmarshalMap(result.Item, &device)
 	if err != nil {
-		return Product{}, fmt.Errorf("failed to unmarshal item: %w", err)
+		return Device{}, fmt.Errorf("failed to unmarshal item: %w", err)
 	}
 
-	return product, nil
+	return device, nil
 }
