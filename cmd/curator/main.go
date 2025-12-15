@@ -72,6 +72,7 @@ func main() {
 	slackApp := &app.App{
 		API:    api,
 		Client: client,
+		DB:     dbStore,
 	}
 
 	fmt.Println("Starting Socket Mode listener...")

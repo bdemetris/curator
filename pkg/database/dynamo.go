@@ -25,8 +25,6 @@ var _ store.Store = (*DynamoClient)(nil)
 
 const tableName = "LocalDevices"
 
-// DynamoClient holds the DynamoDB service client.
-
 // NewDynamoClient configures and returns a client connected to DynamoDB Local.
 func NewDynamoStore(ctx context.Context, endpoint string) (store.Store, error) {
 	cfg, err := config.LoadDefaultConfig(ctx,
@@ -180,7 +178,7 @@ func (c *DynamoClient) ListDevices(ctx context.Context, deviceType string) ([]mo
 
 func (c *DynamoClient) UpdateDevice(ctx context.Context, deviceID string, updates map[string]interface{}) error {
 	if len(updates) == 0 {
-		return fmt.Errorf("I couldn't find any updates for %s", deviceID)
+		return fmt.Errorf("couldn't find any updates for %s", deviceID)
 	}
 
 	updateExpressionParts := []string{}
