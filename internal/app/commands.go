@@ -12,6 +12,7 @@ import (
 	"github.com/slack-go/slack"
 )
 
+// handleAddDevice adds a device - should we keep this? doesn't make sense?
 func (a *App) handleAddDevice(ctx context.Context, channelID string, args []string) {
 	if len(args) != 3 {
 		a.sendText(channelID, "Usage: `@bot add <SerialNumber> <AssetTag> <DeviceType>` (AssetTag must be a number)")
@@ -40,6 +41,7 @@ func (a *App) handleAddDevice(ctx context.Context, channelID string, args []stri
 	a.sendText(channelID, fmt.Sprintf("✅ Device `%s` saved to local DynamoDB!", serial))
 }
 
+// handleGetDevice gets a device based on serial number
 func (a *App) handleGetDevice(ctx context.Context, channelID string, args []string) {
 	if len(args) != 1 {
 		a.sendText(channelID, "Usage: `@bot get <SerialNumber>`")
@@ -72,7 +74,7 @@ func (a *App) handleGetDevice(ctx context.Context, channelID string, args []stri
 	a.sendBlocks(channelID, []slack.Block{resultBlock})
 }
 
-// @bot list
+// handleListDevice outputs a table to devices based on a simple query or "all"
 func (a *App) handleListDevices(ctx context.Context, channelID string, args []string) {
 	if len(args) != 1 {
 		a.sendText(channelID, "Usage: `@bot list <DeviceType>` (DeviceType is one of all, android, ios, macos, windows)")
@@ -96,21 +98,18 @@ func (a *App) handleListDevices(ctx context.Context, channelID string, args []st
 	count := 0
 	const maxDisplay = 10
 
-	// 1. Add Header Block
 	listBlocks = append(listBlocks, slack.NewSectionBlock(
 		slack.NewTextBlockObject("mrkdwn", "*🔎 Device Inventory (Showing top %d)*", false, false),
 		nil, nil,
 	))
 	listBlocks = append(listBlocks, slack.NewDividerBlock())
 
-	// 2. Add Column Headers
 	headerText := fmt.Sprintf("```%-15s | %-15s | %-15s | %s```",
 		"SERIAL NUMBER", "TYPE", "MODEL", "ASSIGNED TO")
 
 	listBlocks = append(listBlocks, slack.NewSectionBlock(
 		slack.NewTextBlockObject("mrkdwn", headerText, false, false), nil, nil))
 
-	// 3. Loop through Devices and Format Rows
 	var rows strings.Builder
 
 	for _, dev := range devices {
@@ -118,8 +117,6 @@ func (a *App) handleListDevices(ctx context.Context, channelID string, args []st
 			break
 		}
 
-		// Use fixed-width formatting within a single text block
-		// Note: The number of spaces must be exact to line up with the header
 		row := fmt.Sprintf("` %-15s | %-15s | %-15s | %s`\n",
 			dev.SerialNumber,
 			strings.ToUpper(dev.DeviceType),
@@ -130,10 +127,8 @@ func (a *App) handleListDevices(ctx context.Context, channelID string, args []st
 		count++
 	}
 
-	// Append all rows as a single text block for consistent alignment
 	listBlocks = append(listBlocks, slack.NewSectionBlock(slack.NewTextBlockObject("mrkdwn", rows.String(), false, false), nil, nil))
 
-	// 4. Add "and more" message if applicable
 	if len(devices) > maxDisplay {
 		listBlocks = append(listBlocks, slack.NewContextBlock("",
 			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("... and *%d* more devices. Filter or use `@bot get <SN>` for details.", len(devices)-count), false, false)))
@@ -142,7 +137,6 @@ func (a *App) handleListDevices(ctx context.Context, channelID string, args []st
 	a.sendBlocks(channelID, listBlocks)
 }
 
-// internal/app/events.go
 // handleAssignDevice assigns a device to a user and datestamps the transaction
 func (a *App) handleAssignDevice(ctx context.Context, channelID string, args []string) {
 	if len(args) != 2 {

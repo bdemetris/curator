@@ -37,10 +37,10 @@ func createHelpMessage(userID string) []slack.Block {
 
 	sectionText := "*Here are the commands I support:*\n\n" +
 		"• `@botName help` - Displays this message.\n" +
-		"• `@botName add <ID> <Name> <Price> <Type>` - Saves a *device* to local DynamoDB.\n" +
-		"• `@botName get <ID>` - Retrieves a single *device* from local DynamoDB.\n" +
-		"• `@botName list` - Retrieves *all devices* from local DynamoDB.\n" +
-		"• `@botName update <ID> <field:value>...` - *Updates* device fields (name, price, type)."
+		"• `@botName add <SerialNumber> <AssetTag> <Type>` - Saves a *device*\n" +
+		"• `@botName get <SerialNumber>` - Retrieves a single *device*\n" +
+		"• `@botName list` - Retrieves *devices*. Supports <all>, <device type> eg android, ios \n" +
+		"• `@botName assign <SerialNumber> <UserName>...` - *assigns* device to user."
 
 	sectionBlock := slack.NewSectionBlock(
 		slack.NewTextBlockObject("mrkdwn", sectionText, false, false),
