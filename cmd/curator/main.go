@@ -8,7 +8,8 @@ import (
 	"strings"
 
 	"bdemetris/curator/internal/app"
-	"bdemetris/curator/internal/database"
+	"bdemetris/curator/pkg/database"
+	"bdemetris/curator/pkg/store"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/socketmode"
@@ -16,6 +17,37 @@ import (
 
 func main() {
 	ctx := context.Background()
+
+	// START STORE INIT
+
+	provider := os.Getenv("DATABASE_PROVIDER")
+	if provider == "" {
+		provider = store.ProviderDynamoDB // Default to DynamoDB
+	}
+
+	cfg := store.StoreConfig{
+		Provider:         provider,
+		DynamoDBEndpoint: os.Getenv("DYNAMODB_ENDPOINT"), // e.g., "http://localhost:8000"
+	}
+
+	constructors := map[string]store.StoreConstructor{
+		store.ProviderDynamoDB: func(ctx context.Context, config string) (store.Store, error) {
+			return database.NewDynamoStore(ctx, config)
+		},
+		// add new store constructors here
+	}
+
+	dbStore, err := store.NewStoreFactory(ctx, cfg, constructors)
+	if err != nil {
+		log.Fatalf("Failed to initialize database store: %v", err)
+	}
+	defer dbStore.Close()
+
+	log.Printf("Successfully initialized store using provider: %s", cfg.Provider)
+
+	// END STORE INIT
+
+	// START SLACK BOT INIT
 
 	appToken := os.Getenv("SLACK_APP_TOKEN")
 	botToken := os.Getenv("SLACK_BOT_TOKEN")
@@ -37,17 +69,9 @@ func main() {
 		socketmode.OptionLog(log.New(os.Stdout, "socketmode: ", log.Lshortfile|log.LstdFlags)),
 	)
 
-	log.Println("Initializing local DynamoDB connection...")
-	dbClient, err := database.NewDynamoClient(ctx)
-	if err != nil {
-		log.Fatalf("FATAL: Could not connect to local DynamoDB: %v. Is Docker running?", err)
-	}
-	log.Println("DynamoDB client initialized and table assured.")
-
 	slackApp := &app.App{
 		API:    api,
 		Client: client,
-		DB:     dbClient,
 	}
 
 	fmt.Println("Starting Socket Mode listener...")

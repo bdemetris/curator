@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"bdemetris/curator/internal/database"
-	"bdemetris/curator/store"
+	"bdemetris/curator/pkg/database"
+	"bdemetris/curator/pkg/model"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -115,7 +115,7 @@ func (a *App) handleAddDevice(ctx context.Context, channelID string, args []stri
 		return
 	}
 
-	device := store.Device{SerialNumber: serial, AssetTag: assetTag, DeviceType: deviceType}
+	device := model.Device{SerialNumber: serial, AssetTag: assetTag, DeviceType: deviceType}
 	if err := a.DB.PutDevice(ctx, device); err != nil {
 		log.Printf("DynamoDB Put Error: %v", err)
 		a.sendText(channelID, fmt.Sprintf("Error saving device to DynamoDB: %v", err))

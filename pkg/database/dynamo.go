@@ -1,7 +1,6 @@
 package database
 
 import (
-	"bdemetris/curator/store"
 	"context"
 	"fmt"
 	"log"
@@ -13,6 +12,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
+	"bdemetris/curator/pkg/model"
+	"bdemetris/curator/pkg/store"
 )
 
 type DynamoClient struct {
@@ -22,12 +24,11 @@ type DynamoClient struct {
 var _ store.Store = (*DynamoClient)(nil)
 
 const tableName = "LocalDevices"
-const localEndpoint = "http://localhost:8000"
 
 // DynamoClient holds the DynamoDB service client.
 
 // NewDynamoClient configures and returns a client connected to DynamoDB Local.
-func NewDynamoClient(ctx context.Context) (*DynamoClient, error) {
+func NewDynamoStore(ctx context.Context, endpoint string) (store.Store, error) {
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion("us-west-2"),
 		config.WithCredentialsProvider(
@@ -42,7 +43,7 @@ func NewDynamoClient(ctx context.Context) (*DynamoClient, error) {
 
 	svc := dynamodb.NewFromConfig(cfg,
 		dynamodb.WithEndpointResolver(
-			dynamodb.EndpointResolverFromURL(localEndpoint),
+			dynamodb.EndpointResolverFromURL(endpoint),
 		),
 
 		func(o *dynamodb.Options) {
@@ -100,7 +101,7 @@ func (c *DynamoClient) Close() error {
 }
 
 // PutDevice stores a Device item in the table.
-func (c *DynamoClient) PutDevice(ctx context.Context, device store.Device) error {
+func (c *DynamoClient) PutDevice(ctx context.Context, device model.Device) error {
 	item, err := attributevalue.MarshalMap(device)
 	if err != nil {
 		return fmt.Errorf("failed to marshal item: %w", err)
@@ -114,7 +115,7 @@ func (c *DynamoClient) PutDevice(ctx context.Context, device store.Device) error
 }
 
 // GetDevice retrieves a Device item by its Serial Number.
-func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (store.Device, error) {
+func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (model.Device, error) {
 	result, err := c.svc.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]types.AttributeValue{
@@ -122,24 +123,24 @@ func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (store.De
 		},
 	})
 	if err != nil {
-		return store.Device{}, err
+		return model.Device{}, err
 	}
 
 	if result.Item == nil {
-		return store.Device{}, fmt.Errorf("SerialNumber %s not found", deviceID)
+		return model.Device{}, fmt.Errorf("SerialNumber %s not found", deviceID)
 	}
 
-	var device store.Device
+	var device model.Device
 	err = attributevalue.UnmarshalMap(result.Item, &device)
 	if err != nil {
-		return store.Device{}, fmt.Errorf("failed to unmarshal item: %w", err)
+		return model.Device{}, fmt.Errorf("failed to unmarshal item: %w", err)
 	}
 
 	return device, nil
 }
 
 // ListDevices retrieves items, optionally filtering by text query and device type.
-func (c *DynamoClient) ListDevices(ctx context.Context, deviceType string) ([]store.Device, error) {
+func (c *DynamoClient) ListDevices(ctx context.Context, deviceType string) ([]model.Device, error) {
 
 	scanInput := &dynamodb.ScanInput{
 		TableName: aws.String(tableName),
@@ -168,7 +169,7 @@ func (c *DynamoClient) ListDevices(ctx context.Context, deviceType string) ([]st
 		return nil, fmt.Errorf("dynamodb scan failed: %w", err)
 	}
 
-	var devices []store.Device
+	var devices []model.Device
 	err = attributevalue.UnmarshalListOfMaps(result.Items, &devices)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal devices: %w", err)
