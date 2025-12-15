@@ -1,11 +1,11 @@
 package database
 
 import (
+	"bdemetris/curator/store"
 	"context"
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -15,26 +15,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-const tableName = "LocalDevices"
-const localEndpoint = "http://localhost:8000"
-
-// DynamoClient holds the DynamoDB service client.
 type DynamoClient struct {
 	svc *dynamodb.Client
 }
 
-// Device struct maps the Go structure to the DynamoDB item structure.
-type Device struct {
-	ID           string    `dynamodbav:"ObjectId"`
-	SerialNumber string    `dynamodbav:"SerialNumber"`
-	AssetTag     int       `dynamodbav:"AssetTag"`
-	AssignedTo   string    `dynamodbav:"AssignedTo"`
-	AssignedDate time.Time `dynamodbav:"AssignedDate"`
-	Manufacturer string    `dynamodbav:"Manufacturer"`
-	ModelName    string    `dynamodbav:"ModelName"`
-	DeviceType   string    `dynamodbav:"DeviceType"`
-	Location     string    `dynamodbav:"Location"`
-}
+var _ store.Store = (*DynamoClient)(nil)
+
+const tableName = "LocalDevices"
+const localEndpoint = "http://localhost:8000"
+
+// DynamoClient holds the DynamoDB service client.
 
 // NewDynamoClient configures and returns a client connected to DynamoDB Local.
 func NewDynamoClient(ctx context.Context) (*DynamoClient, error) {
@@ -102,8 +92,15 @@ func ensureTableExists(ctx context.Context, svc *dynamodb.Client) error {
 	return nil
 }
 
+// Close is implemented to satisfy the Store interface.
+// Since the AWS SDK client doesn't need explicit closing, we return nil.
+func (c *DynamoClient) Close() error {
+	log.Println("DynamoDB client does not require explicit closing.")
+	return nil
+}
+
 // PutDevice stores a Device item in the table.
-func (c *DynamoClient) PutDevice(ctx context.Context, device Device) error {
+func (c *DynamoClient) PutDevice(ctx context.Context, device store.Device) error {
 	item, err := attributevalue.MarshalMap(device)
 	if err != nil {
 		return fmt.Errorf("failed to marshal item: %w", err)
@@ -117,7 +114,7 @@ func (c *DynamoClient) PutDevice(ctx context.Context, device Device) error {
 }
 
 // GetDevice retrieves a Device item by its Serial Number.
-func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (Device, error) {
+func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (store.Device, error) {
 	result, err := c.svc.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]types.AttributeValue{
@@ -125,24 +122,24 @@ func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (Device, 
 		},
 	})
 	if err != nil {
-		return Device{}, err
+		return store.Device{}, err
 	}
 
 	if result.Item == nil {
-		return Device{}, fmt.Errorf("SerialNumber %s not found", deviceID)
+		return store.Device{}, fmt.Errorf("SerialNumber %s not found", deviceID)
 	}
 
-	var device Device
+	var device store.Device
 	err = attributevalue.UnmarshalMap(result.Item, &device)
 	if err != nil {
-		return Device{}, fmt.Errorf("failed to unmarshal item: %w", err)
+		return store.Device{}, fmt.Errorf("failed to unmarshal item: %w", err)
 	}
 
 	return device, nil
 }
 
 // ListDevices retrieves items, optionally filtering by text query and device type.
-func (c *DynamoClient) ListDevices(ctx context.Context, deviceType string) ([]Device, error) {
+func (c *DynamoClient) ListDevices(ctx context.Context, deviceType string) ([]store.Device, error) {
 
 	scanInput := &dynamodb.ScanInput{
 		TableName: aws.String(tableName),
@@ -171,11 +168,57 @@ func (c *DynamoClient) ListDevices(ctx context.Context, deviceType string) ([]De
 		return nil, fmt.Errorf("dynamodb scan failed: %w", err)
 	}
 
-	var devices []Device
+	var devices []store.Device
 	err = attributevalue.UnmarshalListOfMaps(result.Items, &devices)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal devices: %w", err)
 	}
 
 	return devices, nil
+}
+
+func (c *DynamoClient) UpdateDevice(ctx context.Context, deviceID string, updates map[string]interface{}) error {
+	if len(updates) == 0 {
+		return fmt.Errorf("I couldn't find any updates for %s", deviceID)
+	}
+
+	updateExpressionParts := []string{}
+	attributeNames := map[string]string{}
+	attributeValues := map[string]types.AttributeValue{}
+
+	i := 0
+	for key, value := range updates {
+		namePlaceholder := fmt.Sprintf("#a%d", i)
+		valuePlaceholder := fmt.Sprintf(":v%d", i)
+
+		av, err := attributevalue.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("failed to marshal update value for %s: %w", key, err)
+		}
+
+		updateExpressionParts = append(updateExpressionParts, fmt.Sprintf("%s = %s", namePlaceholder, valuePlaceholder))
+		attributeNames[namePlaceholder] = key
+		attributeValues[valuePlaceholder] = av
+		i++
+	}
+
+	updateExpression := "SET " + strings.Join(updateExpressionParts, ", ")
+
+	updateInput := &dynamodb.UpdateItemInput{
+		TableName: aws.String(tableName),
+		Key: map[string]types.AttributeValue{
+			"SerialNumber": &types.AttributeValueMemberS{Value: deviceID},
+		},
+		UpdateExpression:          aws.String(updateExpression),
+		ExpressionAttributeNames:  attributeNames,
+		ExpressionAttributeValues: attributeValues,
+		ReturnValues:              types.ReturnValueUpdatedNew,
+	}
+
+	_, err := c.svc.UpdateItem(ctx, updateInput)
+	if err != nil {
+		return fmt.Errorf("dynamodb update failed for ID %s: %w", deviceID, err)
+	}
+
+	return nil
 }

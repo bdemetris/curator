@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"bdemetris/curator/internal/database"
+	"bdemetris/curator/store"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -85,6 +86,8 @@ func (a *App) handleAppMentionCommand(ctx context.Context, channelID, userID, co
 		a.handleGetDevice(ctx, channelID, args)
 	case "list":
 		a.handleListDevices(ctx, channelID, args)
+	case "update": // <<< NEW COMMAND ROUTING
+		a.handleUpdateDevice(ctx, channelID, userID, args)
 	default:
 		a.sendBlocks(channelID, createUnknownCommandMessage(userID))
 	}
@@ -112,7 +115,7 @@ func (a *App) handleAddDevice(ctx context.Context, channelID string, args []stri
 		return
 	}
 
-	device := database.Device{SerialNumber: serial, AssetTag: assetTag, DeviceType: deviceType}
+	device := store.Device{SerialNumber: serial, AssetTag: assetTag, DeviceType: deviceType}
 	if err := a.DB.PutDevice(ctx, device); err != nil {
 		log.Printf("DynamoDB Put Error: %v", err)
 		a.sendText(channelID, fmt.Sprintf("Error saving device to DynamoDB: %v", err))
@@ -196,6 +199,70 @@ func (a *App) handleListDevices(ctx context.Context, channelID string, args []st
 	a.sendBlocks(channelID, listBlocks)
 }
 
+// internal/app/events.go
+
+// @bot update D001 price:1600 type:Laptop
+func (a *App) handleUpdateDevice(ctx context.Context, channelID, userID string, args []string) {
+	if len(args) < 2 {
+		a.sendText(channelID, "Usage: `@bot update <ID> <field:value>...` (e.g., `@bot update D001 price:1600 name:Monitor`)")
+		return
+	}
+
+	deviceID := args[0]
+	updates := make(map[string]interface{})
+
+	// Iterate over the rest of the arguments (field:value pairs)
+	for _, arg := range args[1:] {
+		parts := strings.SplitN(arg, ":", 2)
+		if len(parts) != 2 {
+			a.sendText(channelID, fmt.Sprintf("Invalid update format: `%s`. Must be `field:value`.", arg))
+			return
+		}
+
+		key := parts[0]
+		valueString := parts[1]
+
+		// 1. Map command keys to DynamoDB attribute names
+		var dbKey string
+		switch strings.ToLower(key) {
+		case "deviceType":
+			dbKey = "DeviceType"
+		case "assetTag":
+			dbKey = "AssetTag"
+		case "assignedTo":
+			dbKey = "AssignedTo"
+		default:
+			a.sendText(channelID, fmt.Sprintf("Unknown field to update: `%s`. Must be 'type', 'assetTag', or 'assignedTo'.", key))
+			return
+		}
+
+		// 2. Handle AssetTag as an integer (DynamoDB attribute value typing)
+		var dbValue interface{}
+		if dbKey == "AssetTag" {
+			assetTag, err := strconv.Atoi(valueString)
+			if err != nil {
+				a.sendText(channelID, "Error: AssetTag must be a valid integer.")
+				return
+			}
+			dbValue = assetTag
+		} else {
+			dbValue = valueString
+		}
+
+		updates[dbKey] = dbValue
+	}
+
+	// 3. Call the DynamoDB update helper
+	err := a.DB.UpdateDevice(ctx, deviceID, updates)
+	if err != nil {
+		log.Printf("DynamoDB Update Error: %v", err)
+		a.sendText(channelID, fmt.Sprintf("Failed to update device `%s`: %v", deviceID, err))
+		return
+	}
+
+	a.sendText(channelID, fmt.Sprintf("✅ Device `%s` successfully updated!", deviceID))
+}
+
 // ------------------------------------------
 // SLACK UTILITIES (Senders)
 // ------------------------------------------
@@ -234,8 +301,10 @@ func createHelpMessage(userID string) []slack.Block {
 
 	sectionText := "*Here are the commands I support:*\n\n" +
 		"• `@botName help` - Displays this message.\n" +
-		"• `@botName add <SerialNumber> <AssetTag>` - Saves a device to local DynamoDB.\n" +
-		"• `@botName get <SerialNumber>` - Retrieves a device from local DynamoDB."
+		"• `@botName add <ID> <Name> <Price> <Type>` - Saves a *device* to local DynamoDB.\n" +
+		"• `@botName get <ID>` - Retrieves a single *device* from local DynamoDB.\n" +
+		"• `@botName list` - Retrieves *all devices* from local DynamoDB.\n" +
+		"• `@botName update <ID> <field:value>...` - *Updates* device fields (name, price, type)."
 
 	sectionBlock := slack.NewSectionBlock(
 		slack.NewTextBlockObject("mrkdwn", sectionText, false, false),
