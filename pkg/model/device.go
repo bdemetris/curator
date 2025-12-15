@@ -4,7 +4,6 @@ import "time"
 
 // Device is the public data model used accross the app
 type Device struct {
-	ID           string    `dynamodbav:"ObjectId"`
 	SerialNumber string    `dynamodbav:"SerialNumber"`
 	AssetTag     int       `dynamodbav:"AssetTag"`
 	AssignedTo   string    `dynamodbav:"AssignedTo"`

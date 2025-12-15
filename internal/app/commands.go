@@ -59,9 +59,8 @@ func (a *App) handleGetDevice(ctx context.Context, channelID string, args []stri
 	}
 
 	resultBlock := slack.NewSectionBlock(
-		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Device Found:* `%s`", device.ID), false, false),
+		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Device Found:* *%s*", device.SerialNumber), false, false),
 		[]*slack.TextBlockObject{
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*SerialNumber:*\n%s", device.SerialNumber), false, false),
 			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*AssignedTo:*\n%s", device.AssignedTo), false, false),
 			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*AssignedDate:*\n%s", device.AssignedDate), false, false),
 			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*AssetTag:*\n%d", device.AssetTag), false, false),
