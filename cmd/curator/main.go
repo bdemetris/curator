@@ -28,13 +28,23 @@ func main() {
 	cfg := store.StoreConfig{
 		Provider:         provider,
 		DynamoDBEndpoint: os.Getenv("DYNAMODB_ENDPOINT"), // e.g., "http://localhost:8000"
+		JiraToken:        os.Getenv("JIRA_TOKEN"),
+		JiraBaseURL:      os.Getenv("JIRA_BASE_URL"),
+		JiraEmail:        os.Getenv("JIRA_EMAIL"),
 	}
 
 	constructors := map[string]store.StoreConstructor{
-		store.ProviderDynamoDB: func(ctx context.Context, config string) (store.Store, error) {
-			return database.NewDynamoStore(ctx, config)
+		store.ProviderDynamoDB: func(ctx context.Context, cfg store.StoreConfig) (store.Store, error) {
+			return database.NewDynamoStore(ctx, cfg.DynamoDBEndpoint)
 		},
-		// add new store constructors here
+
+		store.ProviderJiraAssets: func(ctx context.Context, cfg store.StoreConfig) (store.Store, error) {
+			return database.NewJiraAssetsClient(
+				cfg.JiraBaseURL,
+				cfg.JiraEmail,
+				cfg.JiraToken,
+			)
+		},
 	}
 
 	dbStore, err := store.NewStoreFactory(ctx, cfg, constructors)
