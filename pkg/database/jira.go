@@ -58,6 +58,6 @@ func (c *JiraAssetsClient) GetDevice(ctx context.Context, key string) (model.Dev
 }
 
 // SearchAssets performs a search using Jira Assets Query Language (AQL).
-func (c *JiraAssetsClient) ListDevices(ctx context.Context, serial string) ([]model.Device, error) {
+func (c *JiraAssetsClient) ListDevices(ctx context.Context) ([]model.Device, error) {
 	return nil, fmt.Errorf("Jira API call for SearchAssets not yet implemented")
 }

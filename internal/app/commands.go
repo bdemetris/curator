@@ -1,50 +1,19 @@
 package app
 
 import (
-	"bdemetris/curator/pkg/model"
 	"context"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/slack-go/slack"
 )
 
-// handleAddDevice adds a device - should we keep this? doesn't make sense?
-func (a *App) handleAddDevice(ctx context.Context, channelID string, args []string) {
-	if len(args) != 3 {
-		a.sendText(channelID, "Usage: `@bot add <SerialNumber> <AssetTag> <DeviceType>` (AssetTag must be a number)")
-		return
-	}
-
-	serial := args[0]
-	assetTag, err := strconv.Atoi(args[1])
-	if err != nil {
-		a.sendText(channelID, "Error: Asset Tag must be a valid integer.")
-		return
-	}
-	deviceType := args[2]
-	if !IsArgumentAccepted(deviceTypes, deviceType) {
-		a.sendText(channelID, "Usage: `@bot add <SerialNumber> <AssetTag> <DeviceType>` (Device Type must be one of android, ios, macos, windows)")
-		return
-	}
-
-	device := model.Device{SerialNumber: serial, AssetTag: assetTag, DeviceType: deviceType}
-	if err := a.DB.PutDevice(ctx, device); err != nil {
-		log.Printf("DynamoDB Put Error: %v", err)
-		a.sendText(channelID, fmt.Sprintf("Error saving device to DynamoDB: %v", err))
-		return
-	}
-
-	a.sendText(channelID, fmt.Sprintf("✅ Device `%s` saved to local DynamoDB!", serial))
-}
-
 // handleGetDevice gets a device based on serial number
 func (a *App) handleGetDevice(ctx context.Context, channelID string, args []string) {
 	if len(args) != 1 {
-		a.sendText(channelID, "Usage: `@bot get <SerialNumber>`")
+		a.sendText(channelID, "Usage: `@bot get <AssetTag>`")
 		return
 	}
 
@@ -52,21 +21,22 @@ func (a *App) handleGetDevice(ctx context.Context, channelID string, args []stri
 	device, err := a.DB.GetDevice(ctx, serial)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			a.sendText(channelID, fmt.Sprintf("Device SerialNumber `%s` was not found in the database.", serial))
+			a.sendText(channelID, fmt.Sprintf("Device AssetTag `%s` was not found in the database.", serial))
 			return
 		}
-		log.Printf("DynamoDB Get Error: %v", err)
+		log.Printf("Get Error: %v", err)
 		a.sendText(channelID, fmt.Sprintf("Error retrieving device: %v", err))
 		return
 	}
 
 	resultBlock := slack.NewSectionBlock(
-		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Device Found:* *%s*", device.SerialNumber), false, false),
+		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Device Found:* *%s*", device.AssetTag), false, false),
 		[]*slack.TextBlockObject{
 			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*AssignedTo:*\n%s", device.AssignedTo), false, false),
 			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*AssignedDate:*\n%s", device.AssignedDate), false, false),
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*AssetTag:*\n%d", device.AssetTag), false, false),
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*DeviceType:*\n%s", device.DeviceType), false, false),
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Type:*\n%d", device.DeviceType), false, false),
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Make:*\n%s", device.DeviceMake), false, false),
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Location:*\n%s", device.Location), false, false),
 		},
 		nil,
 	)
@@ -75,14 +45,8 @@ func (a *App) handleGetDevice(ctx context.Context, channelID string, args []stri
 }
 
 // handleListDevice outputs a table to devices based on a simple query or "all"
-func (a *App) handleListDevices(ctx context.Context, channelID string, args []string) {
-	if len(args) != 1 {
-		a.sendText(channelID, "Usage: `@bot list <DeviceType>` (DeviceType is one of all, android, ios, macos, windows)")
-		return
-	}
-	query := args[0]
-
-	devices, err := a.DB.ListDevices(ctx, query)
+func (a *App) handleListDevices(ctx context.Context, channelID string) {
+	devices, err := a.DB.ListDevices(ctx)
 	if err != nil {
 		log.Printf("DynamoDB List Error: %v", err)
 		a.sendText(channelID, fmt.Sprintf("Error listing devices: %v", err))
@@ -99,13 +63,13 @@ func (a *App) handleListDevices(ctx context.Context, channelID string, args []st
 	const maxDisplay = 10
 
 	listBlocks = append(listBlocks, slack.NewSectionBlock(
-		slack.NewTextBlockObject("mrkdwn", "*🔎 Device Inventory (Showing top %d)*", false, false),
+		slack.NewTextBlockObject("mrkdwn", "*🔎 Device Inventory (Showing top 10)*", false, false),
 		nil, nil,
 	))
 	listBlocks = append(listBlocks, slack.NewDividerBlock())
 
-	headerText := fmt.Sprintf("```%-15s | %-15s | %-15s | %s```",
-		"SERIAL NUMBER", "TYPE", "MODEL", "ASSIGNED TO")
+	headerText := fmt.Sprintf("```%-15s | %-15s | %-20s | %s```",
+		"ASSET TAG", "TYPE", "MODEL", "ASSIGNED TO")
 
 	listBlocks = append(listBlocks, slack.NewSectionBlock(
 		slack.NewTextBlockObject("mrkdwn", headerText, false, false), nil, nil))
@@ -117,10 +81,10 @@ func (a *App) handleListDevices(ctx context.Context, channelID string, args []st
 			break
 		}
 
-		row := fmt.Sprintf("` %-15s | %-15s | %-15s | %s`\n",
-			dev.SerialNumber,
+		row := fmt.Sprintf("` %-15s | %-15s | %-20s | %s`\n",
+			dev.AssetTag,
 			strings.ToUpper(dev.DeviceType),
-			dev.ModelName,
+			dev.DeviceModel,
 			dev.AssignedTo)
 
 		rows.WriteString(row)
@@ -131,38 +95,53 @@ func (a *App) handleListDevices(ctx context.Context, channelID string, args []st
 
 	if len(devices) > maxDisplay {
 		listBlocks = append(listBlocks, slack.NewContextBlock("",
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("... and *%d* more devices. Filter or use `@bot get <SN>` for details.", len(devices)-count), false, false)))
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("... and *%d* more devices. Filter or use `@bot get <AssetTag>` for details.", len(devices)-count), false, false)))
 	}
 
 	a.sendBlocks(channelID, listBlocks)
 }
 
-// handleAssignDevice assigns a device to a user and datestamps the transaction
-func (a *App) handleAssignDevice(ctx context.Context, channelID string, args []string) {
-	if len(args) != 2 {
-		a.sendText(channelID, "Usage: `@bot assign <SerialNumber> <UserName>` (e.g., `@bot assign ABC-123 john.doe`)")
+func (a *App) handleCheckoutDevice(ctx context.Context, channelID, userID string, args []string) {
+	if len(args) != 1 {
+		a.sendText(channelID, "Usage: `@bot checkout <SerialNumber>`")
 		return
 	}
 
-	deviceID := args[0]
-	newAssignedUser := args[1]
+	serial := args[0]
 
-	if strings.TrimSpace(newAssignedUser) == "" {
-		a.sendText(channelID, "Error: User name cannot be empty.")
+	// 1. Get the User Info from Slack to retrieve the email
+	user, err := a.API.GetUserInfo(userID)
+	if err != nil {
+		log.Printf("Slack API Error (GetUserInfo for %s): %v", userID, err)
+		a.sendText(channelID, "❌ Failed to retrieve your user profile from Slack.")
 		return
 	}
 
+	// Extract the email from the profile
+	userEmail := user.Profile.Email
+	if userEmail == "" {
+		// Fallback to DisplayName if email is hidden or restricted by Slack settings
+		userEmail = user.Profile.DisplayName
+		if userEmail == "" {
+			userEmail = user.RealName
+		}
+		log.Printf("Warning: No email found for user %s, using fallback: %s", userID, userEmail)
+	}
+
+	// 2. Construct the update payload
 	updates := make(map[string]interface{})
+	now := time.Now()
 
-	updates["AssignedTo"] = newAssignedUser
-	updates["AssignedDate"] = time.Now()
+	updates["AssignedTo"] = userEmail
+	updates["AssignedDate"] = &now // Using the pointer fix
 
-	if err := a.DB.UpdateDevice(ctx, deviceID, updates); err != nil {
-		log.Printf("DB Update Error (Assign Device %s to %s): %v", deviceID, newAssignedUser, err)
-
-		a.sendText(channelID, fmt.Sprintf("❌ Failed to assign device `%s`: %v", deviceID, err))
+	// 3. Update the database using the SerialNumber key
+	if err := a.DB.UpdateDevice(ctx, serial, updates); err != nil {
+		log.Printf("DB Update Error (Checkout %s by %s): %v", serial, userEmail, err)
+		a.sendText(channelID, fmt.Sprintf("❌ Failed to checkout device `%s`: %v", serial, err))
 		return
 	}
 
-	a.sendText(channelID, fmt.Sprintf("✅ Device `%s` is now assigned to *%s*.", deviceID, newAssignedUser))
+	// 4. Success Response
+	a.sendText(channelID, fmt.Sprintf("✅ Device `%s` is now checked out to *%s*.", serial, userEmail))
 }

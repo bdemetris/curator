@@ -76,14 +76,12 @@ func (a *App) handleAppMentionCommand(ctx context.Context, channelID, userID, co
 	switch cmd {
 	case "help":
 		a.sendBlocks(channelID, createHelpMessage(userID))
-	case "add":
-		a.handleAddDevice(ctx, channelID, args)
 	case "get":
 		a.handleGetDevice(ctx, channelID, args)
 	case "list":
-		a.handleListDevices(ctx, channelID, args)
-	case "assign":
-		a.handleAssignDevice(ctx, channelID, args)
+		a.handleListDevices(ctx, channelID)
+	case "checkout":
+		a.handleCheckoutDevice(ctx, channelID, userID, args)
 	default:
 		a.sendBlocks(channelID, createUnknownCommandMessage(userID))
 	}

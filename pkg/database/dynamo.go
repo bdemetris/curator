@@ -23,7 +23,7 @@ type DynamoClient struct {
 
 var _ store.Store = (*DynamoClient)(nil)
 
-const tableName = "LocalDevices"
+const tableName = "Devices"
 
 // NewDynamoClient configures and returns a client connected to DynamoDB Local.
 func NewDynamoStore(ctx context.Context, endpoint string) (store.Store, error) {
@@ -69,13 +69,13 @@ func ensureTableExists(ctx context.Context, svc *dynamodb.Client) error {
 		TableName: aws.String(tableName),
 		AttributeDefinitions: []types.AttributeDefinition{
 			{
-				AttributeName: aws.String("SerialNumber"),
+				AttributeName: aws.String("AssetTag"),
 				AttributeType: types.ScalarAttributeTypeS,
 			},
 		},
 		KeySchema: []types.KeySchemaElement{
 			{
-				AttributeName: aws.String("SerialNumber"),
+				AttributeName: aws.String("AssetTag"),
 				KeyType:       types.KeyTypeHash,
 			},
 		},
@@ -117,7 +117,7 @@ func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (model.De
 	result, err := c.svc.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]types.AttributeValue{
-			"SerialNumber": &types.AttributeValueMemberS{Value: deviceID},
+			"AssetTag": &types.AttributeValueMemberS{Value: deviceID},
 		},
 	})
 	if err != nil {
@@ -125,7 +125,7 @@ func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (model.De
 	}
 
 	if result.Item == nil {
-		return model.Device{}, fmt.Errorf("SerialNumber %s not found", deviceID)
+		return model.Device{}, fmt.Errorf("AssetTag %s not found", deviceID)
 	}
 
 	var device model.Device
@@ -137,29 +137,12 @@ func (c *DynamoClient) GetDevice(ctx context.Context, deviceID string) (model.De
 	return device, nil
 }
 
-// ListDevices retrieves items, optionally filtering by text query and device type.
-func (c *DynamoClient) ListDevices(ctx context.Context, deviceType string) ([]model.Device, error) {
-
+// ListDevices retrieves all device items from the DynamoDB table.
+func (c *DynamoClient) ListDevices(ctx context.Context) ([]model.Device, error) {
+	// A Scan without a FilterExpression retrieves all items
 	scanInput := &dynamodb.ScanInput{
 		TableName: aws.String(tableName),
 		Select:    types.SelectAllAttributes,
-	}
-
-	filterExpressions := []string{}
-	attributeNames := map[string]string{}
-	attributeValues := map[string]types.AttributeValue{}
-
-	// use type if the request isn't for all devices
-	if deviceType != "all" {
-		filterExpressions = append(filterExpressions, "#DeviceType = :typeQueryValue")
-		attributeNames["#DeviceType"] = "DeviceType"
-		attributeValues[":typeQueryValue"] = &types.AttributeValueMemberS{Value: deviceType}
-	}
-
-	if len(filterExpressions) > 0 {
-		scanInput.FilterExpression = aws.String(strings.Join(filterExpressions, " AND "))
-		scanInput.ExpressionAttributeNames = attributeNames
-		scanInput.ExpressionAttributeValues = attributeValues
 	}
 
 	result, err := c.svc.Scan(ctx, scanInput)
@@ -178,7 +161,7 @@ func (c *DynamoClient) ListDevices(ctx context.Context, deviceType string) ([]mo
 
 func (c *DynamoClient) UpdateDevice(ctx context.Context, deviceID string, updates map[string]interface{}) error {
 	if len(updates) == 0 {
-		return fmt.Errorf("couldn't find any updates for %s", deviceID)
+		return fmt.Errorf("no update parameters provided for device ID %s", deviceID)
 	}
 
 	updateExpressionParts := []string{}
@@ -203,10 +186,12 @@ func (c *DynamoClient) UpdateDevice(ctx context.Context, deviceID string, update
 
 	updateExpression := "SET " + strings.Join(updateExpressionParts, ", ")
 
+	// --- 🛠️ THE CRITICAL FIX IS HERE ---
 	updateInput := &dynamodb.UpdateItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]types.AttributeValue{
-			"SerialNumber": &types.AttributeValueMemberS{Value: deviceID},
+			// MUST be "SerialNumber" to match your CreateTable schema
+			"AssetTag": &types.AttributeValueMemberS{Value: deviceID},
 		},
 		UpdateExpression:          aws.String(updateExpression),
 		ExpressionAttributeNames:  attributeNames,

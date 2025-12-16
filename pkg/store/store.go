@@ -13,6 +13,6 @@ type Store interface {
 	// Device Operations
 	PutDevice(ctx context.Context, device model.Device) error
 	GetDevice(ctx context.Context, deviceID string) (model.Device, error)
-	ListDevices(ctx context.Context, deviceType string) ([]model.Device, error)
+	ListDevices(ctx context.Context) ([]model.Device, error)
 	UpdateDevice(ctx context.Context, deviceID string, updates map[string]interface{}) error
 }
