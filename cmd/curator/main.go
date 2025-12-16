@@ -85,6 +85,12 @@ func main() {
 		DB:     dbStore,
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start the background scheduler
+	go slackApp.StartOverdueChecker(ctx)
+
 	fmt.Println("Starting Socket Mode listener...")
 
 	go slackApp.HandleEvents(ctx)
