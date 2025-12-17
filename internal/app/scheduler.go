@@ -10,8 +10,8 @@ import (
 	"github.com/slack-go/slack"
 )
 
-var RunOverdueCheckerEvery = 1 * time.Minute // testing run check ever minute
-var ItemIsOverduePeriod = 30 * time.Second   // testing 30 seconds until overdue
+var RunOverdueCheckerEvery = 1 * time.Hour // testing run check ever minute
+var ItemIsOverduePeriod = 30 * time.Hour   // testing 30 seconds until overdue
 
 // StartOverdueChecker runs a background loop that checks for overdue devices every 24 hours.
 func (a *App) StartOverdueChecker(ctx context.Context) {
@@ -46,7 +46,6 @@ func (a *App) checkAndNotifyOverdue(ctx context.Context) {
 			continue
 		}
 
-		// Calculate age
 		duration := now.Sub(*dev.AssignedDate)
 		if duration > overdueThreshold {
 			log.Printf("⚠️ Device %s is overdue (Assigned to %s for %v)", dev.AssetTag, dev.AssignedTo, duration)
@@ -62,7 +61,6 @@ func (a *App) notifyOverdueAssignee(dev model.Device) {
 		return
 	}
 
-	// OpenConversation returns (channel, no_longer_exists, discard_values, error)
 	channel, _, _, err := a.API.OpenConversation(&slack.OpenConversationParameters{
 		Users: []string{user.ID},
 	})
@@ -71,13 +69,10 @@ func (a *App) notifyOverdueAssignee(dev model.Device) {
 		return
 	}
 
-	// Use the ID property of the returned channel object
-	channelID := channel.ID
-
 	message := fmt.Sprintf(
 		"👋 Hi %s! You've had device `%s` (%s) for over 30 days. Please return it or renew it!",
 		user.RealName, dev.AssetTag, dev.DeviceModel,
 	)
 
-	a.sendText(channelID, message)
+	a.sendText(channel.ID, message)
 }

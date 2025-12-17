@@ -13,8 +13,6 @@ import (
 	"github.com/slack-go/slack/socketmode"
 )
 
-var deviceTypes = []string{"android", "ios", "macos", "windows"}
-
 // App is the main structure holding all clients.
 type App struct {
 	API    *slack.Client
@@ -76,10 +74,8 @@ func (a *App) handleAppMentionCommand(ctx context.Context, channelID, userID, co
 	switch cmd {
 	case "help":
 		a.sendBlocks(channelID, createHelpMessage(userID))
-	case "get":
-		a.handleGetDevice(ctx, channelID, args)
-	case "list":
-		a.handleListDevices(ctx, channelID)
+	case "show":
+		a.handleShowDevices(ctx, channelID, userID, args)
 	case "checkout":
 		a.handleCheckoutDevice(ctx, channelID, userID, args)
 	default:
