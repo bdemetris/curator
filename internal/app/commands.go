@@ -115,9 +115,11 @@ func (a *App) handleCheckoutDevice(ctx context.Context, channelID, userID string
 
 	updates := make(map[string]interface{})
 	now := time.Now()
+	due := now.AddDate(0, 0, 30)
 
 	updates["AssignedTo"] = userEmail
 	updates["AssignedDate"] = &now
+	updates["DueDate"] = &due
 
 	if err := a.DB.UpdateDevice(ctx, serial, updates); err != nil {
 		log.Printf("DB Update Error (Checkout %s by %s): %v", serial, userEmail, err)
@@ -125,5 +127,6 @@ func (a *App) handleCheckoutDevice(ctx context.Context, channelID, userID string
 		return
 	}
 
-	a.sendText(channelID, fmt.Sprintf("✅ Device `%s` is now checked out to *%s*.", serial, userEmail))
+	a.sendText(channelID, fmt.Sprintf("✅ Device `%s` checked out to *%s*.\n📅 *Due back:* %s",
+		serial, userEmail, due.Format("Jan 02, 2006")))
 }

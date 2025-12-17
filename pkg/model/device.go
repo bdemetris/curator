@@ -11,4 +11,5 @@ type Device struct {
 	Location     string     `dynamodbav:"Location"`
 	AssignedTo   string     `dynamodbav:"AssignedTo"`
 	AssignedDate *time.Time `dynamodbav:"AssignedDate"`
+	DueDate      *time.Time `dynamodbav:"DueDate"`
 }

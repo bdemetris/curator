@@ -31,25 +31,15 @@ func (a *App) StartOverdueChecker(ctx context.Context) {
 }
 
 func (a *App) checkAndNotifyOverdue(ctx context.Context) {
-	devices, err := a.DB.ListDevices(ctx)
-	if err != nil {
-		log.Printf("❌ Scheduler Error: Could not list devices: %v", err)
-		return
-	}
-
+	devices, _ := a.DB.ListDevices(ctx)
 	now := time.Now()
-	overdueThreshold := ItemIsOverduePeriod
 
 	for _, dev := range devices {
-		// Skip unassigned devices
-		if dev.AssignedDate == nil || dev.AssignedTo == "" {
-			continue
-		}
-
-		duration := now.Sub(*dev.AssignedDate)
-		if duration > overdueThreshold {
-			log.Printf("⚠️ Device %s is overdue (Assigned to %s for %v)", dev.AssetTag, dev.AssignedTo, duration)
-			a.notifyOverdueAssignee(dev)
+		if dev.DueDate != nil && dev.AssignedTo != "" {
+			if now.After(*dev.DueDate) {
+				log.Printf("⚠️ Device %s is past due date (%v)", dev.AssetTag, dev.DueDate)
+				a.notifyOverdueAssignee(dev)
+			}
 		}
 	}
 }

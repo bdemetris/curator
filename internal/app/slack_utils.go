@@ -32,24 +32,26 @@ func (a *App) sendBlocks(channelID string, blocks []slack.Block) {
 }
 
 func createHelpMessage(userID string) []slack.Block {
-	headerText := fmt.Sprintf("👋 Hello <@%s>! I'm your DynamoDB Bot. Try me!", userID)
+	headerText := "📱 Asset Management Bot Help"
 	headerBlock := slack.NewHeaderBlock(slack.NewTextBlockObject("plain_text", headerText, false, false))
 
 	divider := slack.NewDividerBlock()
 
-	sectionText := "*Here are the commands I support:*\n\n" +
-		"• `@botName help` - Displays this message.\n" +
-		"• `@botName add <SerialNumber> <AssetTag> <Type>` - Saves a *device*\n" +
-		"• `@botName get <SerialNumber>` - Retrieves a single *device*\n" +
-		"• `@botName list` - Retrieves *devices*. Supports <all>, <device type> eg android, ios \n" +
-		"• `@botName assign <SerialNumber> <UserName>...` - *assigns* device to user."
+	sectionText := fmt.Sprintf("👋 Hello <@%s>! I can help you manage and track hardware assets.\n\n", userID) +
+		"*Available Commands:*\n\n" +
+		"• `show all` - List every device in the inventory.\n" +
+		"• `show mine` - List all devices currently assigned to *you*.\n" +
+		"• `show available [filter]` - Find unassigned devices (e.g., `show available macbook`).\n" +
+		"• `show <AssetTag>` - Look up a specific device by its asset tag.\n" +
+		"• `checkout <AssetTag>` - Assign a device to *yourself* using your Slack email.\n" +
+		"• `help` - Display this menu."
 
 	sectionBlock := slack.NewSectionBlock(
 		slack.NewTextBlockObject("mrkdwn", sectionText, false, false),
 		nil, nil,
 	)
 
-	contextText := "Note: You must have a DynamoDB Docker container running on localhost:8000."
+	contextText := "💡 *Tip:* You no longer need to type your name for checkouts; I'll use your Slack profile automatically!"
 	contextBlock := slack.NewContextBlock("", slack.NewTextBlockObject("mrkdwn", contextText, false, false))
 
 	return []slack.Block{
@@ -78,7 +80,7 @@ func (a *App) renderDeviceTable(channelID, title string, devices []model.Device)
 
 	var rows strings.Builder
 
-	rows.WriteString(fmt.Sprintf("```%-15s | %-20s | %s```\n", "ASSET TAG", "TYPE", "ASSIGNED TO"))
+	rows.WriteString(fmt.Sprintf("```%-15s | %-20s | %-20s | %s```\n", "ASSET TAG", "TYPE", "ASSIGNED TO", "DUE DATE"))
 
 	for i, dev := range devices {
 		if i >= maxDisplay {
@@ -94,10 +96,16 @@ func (a *App) renderDeviceTable(channelID, title string, devices []model.Device)
 			}
 		}
 
-		line := fmt.Sprintf("`%-15s | %-12s | %s`\n",
+		dueDate := "None"
+		if dev.DueDate != nil {
+			dueDate = dev.DueDate.Format("Jan 02, 2006")
+		}
+
+		line := fmt.Sprintf("`%-15s | %-20s | %-20s | %s`\n",
 			dev.AssetTag,
 			strings.ToUpper(dev.DeviceType),
 			status,
+			dueDate,
 		)
 		rows.WriteString(line)
 	}
@@ -131,6 +139,11 @@ func (a *App) renderSingleDeviceDetail(channelID string, dev model.Device) {
 	if dev.AssignedDate != nil {
 		fields = append(fields, slack.NewTextBlockObject("mrkdwn",
 			fmt.Sprintf("*Checked Out:*\n%s", dev.AssignedDate.Format("Jan 02, 2006")), false, false))
+	}
+
+	if dev.DueDate != nil {
+		fields = append(fields, slack.NewTextBlockObject("mrkdwn",
+			fmt.Sprintf("*Due Date:*\n%s", dev.DueDate.Format("Jan 02, 2006")), false, false))
 	}
 
 	blocks := []slack.Block{
