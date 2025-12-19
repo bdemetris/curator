@@ -43,6 +43,7 @@ func createHelpMessage(userID string) []slack.Block {
 		"• `show mine` - List all devices currently assigned to *you*.\n" +
 		"• `show available [filter]` - Find unassigned devices (e.g., `show available macbook`).\n" +
 		"• `show <AssetTag>` - Look up a specific device by its asset tag.\n" +
+		"• `show types` - See all categories (e.g., Laptop, Phone, Tablet).\n" +
 		"• `checkout <AssetTag>` - Assign a device to *yourself* using your Slack email.\n" +
 		"• `help` - Display this menu."
 

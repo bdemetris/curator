@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 )
@@ -41,6 +42,33 @@ func (a *App) handleShowDevices(ctx context.Context, channelID, userID string, a
 			}
 		}
 		title = "Your Checked-out Devices"
+
+	case "types":
+		typeMap := make(map[string]int)
+		for _, d := range allDevices {
+			if d.DeviceType != "" {
+				t := strings.Title(strings.ToLower(strings.TrimSpace(d.DeviceType)))
+				typeMap[t]++
+			}
+		}
+
+		if len(typeMap) == 0 {
+			a.sendText(channelID, "No device types found in the database.")
+			return
+		}
+
+		var typeList []string
+		for t, count := range typeMap {
+			typeList = append(typeList, fmt.Sprintf("• *%s* (%d total)", t, count))
+		}
+		sort.Strings(typeList)
+
+		title := "Available Device Types"
+		message := fmt.Sprintf("🔎 *%s*\n\n%s\n\n_Try `@bot show available <type>` to see specific units._",
+			title, strings.Join(typeList, "\n"))
+
+		a.sendText(channelID, message)
+		return
 
 	case "available":
 		filterText := ""
